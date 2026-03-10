@@ -1,80 +1,80 @@
 import streamlit as st
+import pandas as pd
 import numpy as np
 from scipy.stats import poisson
 
-# --- PASTE YOUR MatchPredictor CLASS HERE ---
-class MatchPredictor:
-    def __init__(self, league_name):
-        self.configs = {
-            "UCL": {"avg_home": 1.85, "avg_away": 1.59, "draw_mod": 0.95},
-            "EPL": {"avg_home": 1.55, "avg_away": 1.22, "draw_mod": 1.10},
-            "LaLiga": {"avg_home": 1.48, "avg_away": 1.18, "draw_mod": 1.20},
-            "Bundesliga": {"avg_home": 1.72, "avg_away": 1.46, "draw_mod": 0.90}
-        }
-        self.config = self.configs.get(league_name, self.configs["UCL"])
+# --- 1. BACKGROUND ENGINE: Strength Calculator ---
+def calculate_team_strength(form, home_record, away_record, def_stat, att_stat):
+    # Higher form and att_stat = better strength
+    # Lower def_stat (goals conceded) = better strength
+    base = (form * 0.3) + (att_stat * 0.4) + (home_record * 0.1) + (away_record * 0.1)
+    defense_impact = (2 - def_stat) * 0.2  # Inverse: lower goals conceded helps
+    return round(base + defense_impact, 2)
 
-    def calculate_player_gravity(self, team_xg, players_out, replacements):
-        usage_rates = {"Isak": 0.32, "Maddison": 0.28, "Son": 0.30, "Bruno": 0.24, "Kane": 0.40}
-        efficiency = {"Ekitike": 0.75, "Solanke": 0.55, "Jackson": 0.85, "Tonali": 0.60}
-        total_loss = sum(usage_rates.get(p, 0.10) for p in players_out)
-        total_recovery = sum(efficiency.get(r, 0.40) * usage_rates.get(players_out[i], 0.10) 
-                             for i, r in enumerate(replacements) if i < len(players_out))
-        return team_xg * (1 - total_loss + total_recovery)
+# --- 2. PREDICTION LOGIC ---
+def predict_match(h_strength, a_strength):
+    home_xg = h_strength * 1.2  # Simple multiplier for Home Advantage
+    away_xg = a_strength * 0.9
+    home_win = poisson.pmf(range(1, 10), home_xg).sum()
+    away_win = poisson.pmf(range(1, 10), away_xg).sum()
+    return home_xg, away_xg
 
-    def get_gk_modifier(self, gk_name):
-        mods = {"Alisson": 1.15, "Mamardashvili": 0.88, "Vicario": 1.05, "Ramsdale": 0.94, "Oblak": 1.05}
-        return mods.get(gk_name, 1.0)
+# --- 3. THE DASHBOARD ---
+st.set_page_config(page_title="Elite Football Engine 2026", layout="wide")
 
-    def predict(self, home_stats, away_stats, home_gk, away_gk):
-        home_xg = home_stats['att'] * away_stats['def'] * self.config['avg_home']
-        away_xg = away_stats['att'] * home_stats['def'] * self.config['avg_away']
-        home_xg = self.calculate_player_gravity(home_xg, home_stats['out'], home_stats['bench'])
-        away_xg = self.calculate_player_gravity(away_xg, away_stats['out'], away_stats['bench'])
-        home_cs = poisson.pmf(0, away_xg) * self.get_gk_modifier(home_gk)
-        away_cs = poisson.pmf(0, home_xg) * self.get_gk_modifier(away_gk)
-        return home_xg, away_xg, home_cs, away_cs
+# Use "Tabs" to organize the Search and Predictor
+tab1, tab2 = st.tabs(["🎯 Match Predictor", "📊 Player Stats Search"])
 
-# --- STREAMLIT FRONTEND ---
-st.set_page_config(page_title="2026 Match Engine", layout="wide")
-st.title("⚽ Tactical Predictor Pro (2026 Edition)")
+with tab1:
+    st.title("Strategic Match Predictor")
+    league = st.selectbox("Select League", ["Premier League", "La Liga", "Serie A", "Bundesliga", "Ligue 1", "Eredivisie"])
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("🏠 Home Team")
+        h_team = st.text_input("Home Team Name", "Arsenal")
+        h_form = st.slider("Recent Form (1-10)", 1, 10, 8, key="h_f")
+        h_att = st.slider("Attacking Record (Avg Goals)", 0.5, 4.0, 2.1, key="h_a")
+        h_def = st.slider("Defensive Record (Avg Conceded)", 0.5, 4.0, 0.9, key="h_d")
+        h_info = st.text_area("Player Info (e.g., 'Saka high fatigue', 'Saliba back')", key="h_p")
 
-# Sidebar Configuration
-league = st.sidebar.selectbox("Select League", ["UCL", "EPL", "LaLiga", "Bundesliga"])
-predictor = MatchPredictor(league)
+    with col2:
+        st.subheader("🚀 Away Team")
+        a_team = st.text_input("Away Team Name", "Liverpool")
+        a_form = st.slider("Recent Form (1-10)", 1, 10, 7, key="a_f")
+        a_att = st.slider("Attacking Record (Avg Goals)", 0.5, 4.0, 1.8, key="a_a")
+        a_def = st.slider("Defensive Record (Avg Conceded)", 0.5, 4.0, 1.1, key="a_d")
+        a_info = st.text_area("Player Info (e.g., 'Salah on bench', 'Midfield rotated')", key="a_p")
 
-col1, col2 = st.columns(2)
+    # Background Calculation
+    h_strength = calculate_team_strength(h_form, 8, 5, h_def, h_att)
+    a_strength = calculate_team_strength(a_form, 6, 7, a_def, a_att)
+    
+    if st.button("Run Prediction"):
+        h_xg, a_xg = predict_match(h_strength, a_strength)
+        st.divider()
+        m1, m2 = st.columns(2)
+        m1.metric(f"{h_team} Calculated Strength", h_strength)
+        m2.metric(f"{a_team} Calculated Strength", a_strength)
+        st.success(f"Predicted Score: {round(h_xg, 2)} - {round(a_xg, 2)}")
 
-with col1:
-    st.header("🏠 Home Team")
-    h_att = st.slider("Home Attack Strength", 0.5, 2.0, 1.15)
-    h_def = st.slider("Home Defense Liability", 0.5, 2.0, 0.80)
-    h_gk = st.selectbox("Home GK", ["Oblak", "Alisson", "Vicario", "Other"])
-    h_out = st.multiselect("Key Players Out (Home)", ["Son", "Maddison", "Kane", "Isak"])
-    h_bench = st.multiselect("Replacements (Home)", ["Solanke", "Ekitike", "Jackson"])
-
-with col2:
-    st.header("🚀 Away Team")
-    a_att = st.slider("Away Attack Strength", 0.5, 2.0, 1.30)
-    a_def = st.slider("Away Defense Liability", 0.5, 2.0, 1.10)
-    a_gk = st.selectbox("Away GK", ["Vicario", "Mamardashvili", "Ramsdale", "Other"])
-    a_out = st.multiselect("Key Players Out (Away)", ["Son", "Maddison", "Kane", "Isak"])
-    a_bench = st.multiselect("Replacements (Away)", ["Solanke", "Ekitike", "Jackson"])
-
-# Execution
-h_xg, a_xg, h_cs, a_cs = predictor.predict(
-    {'att': h_att, 'def': h_def, 'out': h_out, 'bench': h_bench},
-    {'att': a_att, 'def': a_def, 'out': a_out, 'bench': a_bench},
-    h_gk, a_gk
-)
-
-# Results Display
-st.divider()
-m1, m2, m3 = st.columns(3)
-m1.metric("Predicted Scoreline", f"{round(h_xg, 2)} - {round(a_xg, 2)}")
-m2.metric("Home Clean Sheet Prob", f"{round(h_cs * 100, 1)}%")
-m3.metric("Away Clean Sheet Prob", f"{round(a_cs * 100, 1)}%")
-
-# Simulation Visualization
-st.subheader("Win/Draw/Loss Distribution")
-probs = [poisson.pmf(i, h_xg) for i in range(5)]
-st.bar_chart(probs)
+with tab2:
+    st.title("League Player Search")
+    st.write("Sort players by xG (Expected Goals), xA (Expected Assists), and CS (Clean Sheets).")
+    
+    # Simulated Data Table
+    data = {
+        "Player": ["Haaland", "Salah", "Palmer", "Saka", "Watkins", "Foden"],
+        "League": ["EPL", "EPL", "EPL", "EPL", "EPL", "EPL"],
+        "xG": [24.5, 18.2, 15.1, 12.4, 14.8, 10.2],
+        "xA": [3.2, 8.5, 9.1, 10.4, 4.2, 7.8],
+        "CS Contribution": [0.1, 0.2, 0.4, 0.5, 0.2, 0.3]
+    }
+    df = pd.DataFrame(data)
+    
+    search = st.text_input("Search Player Name")
+    sort_by = st.selectbox("Sort By", ["xG", "xA", "CS Contribution"])
+    
+    filtered_df = df[df['Player'].str.contains(search, case=False)]
+    st.dataframe(filtered_df.sort_values(by=sort_by, ascending=False), use_container_width=True)
