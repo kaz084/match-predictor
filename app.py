@@ -3,7 +3,7 @@ import requests
 import pandas as pd
 
 # --- API SETUP ---
-API_KEY = st.secrets["FOOTBALL_API_KEY"]
+API_KEY = st.secrets[f4d3ba8670e33890641a31b307f86c80]
 BASE_URL = "https://v3.football.api-sports.io/"
 HEADERS = {
     'x-rapidapi-host': "v3.football.api-sports.io",
@@ -62,3 +62,4 @@ with tab2:
                 "Rating": p['statistics'][0]['games']['rating']
             })
         st.dataframe(pd.DataFrame(player_list))
+
